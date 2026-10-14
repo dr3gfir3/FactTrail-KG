@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TagaP — Hybrid GraphRAG Fact-Checking Platform</title>
+  <!-- Google Fonts Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Vis.js network CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/dist/vis-network.min.css" />
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <div class="logo-container">
+          <span class="logo-icon">⚓</span>
+          <div class="logo-text">
+            <h2>TagaP</h2>
+            <span class="logo-subtitle">GraphRAG Pipeline</span>
+          </div>
+        </div>
+      </div>
+      <nav class="sidebar-menu">
+        <button class="menu-item active" data-view="fact-checker">
+          <span class="menu-icon">✓</span>
+          <span class="menu-label">Fact-Checker</span>
+        </button>
+        <button class="menu-item" data-view="kg-explorer">
+          <span class="menu-icon">🕸</span>
+          <span class="menu-label">KG Explorer</span>
+        </button>
+        <button class="menu-item" data-view="wiki-explorer">
+          <span class="menu-icon">W</span>
+          <span class="menu-label">Wiki Explorer</span>
+        </button>
+        <button class="menu-item" data-view="benchmark-center">
+          <span class="menu-icon">📊</span>
+          <span class="menu-label">Benchmark Center</span>
+        </button>
+        <button class="menu-item" data-view="ner-playground">
+          <span class="menu-icon">🔠</span>
+          <span class="menu-label">NER Playground</span>
+        </button>
+        <button class="menu-item" data-view="system-info">
+          <span class="menu-icon">⚙</span>
+          <span class="menu-label">System Status</span>
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="footer-status">
+          <span class="status-dot online"></span>
+          <span>Pipeline Ready</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="app-content">
+      <!-- VIEW: FACT-CHECKER -->
+      <section id="view-fact-checker" class="content-view active">
+        <header class="view-header">
+          <h1>Automated Claim Verification</h1>
+          <p>Verify natural language statements using the hybrid local GraphRAG and Wikipedia MPC fallback pipeline.</p>
+        </header>
+
+        <div class="view-body">
+          <div class="grid-layout cols-2">
+            <!-- Form Block -->
+            <div class="card glass">
+              <div class="card-header">
+                <h3>Input Statement</h3>
+              </div>
+              <div class="card-body">
+                <form id="verify-form">
+                  <div class="form-group">
+                    <label for="claim">Claim text to verify</label>
+                    <textarea id="claim" name="claim" rows="4" placeholder="e.g., The Simpsons is an American animated sitcom created by Matt Groening..."></textarea>
+                  </div>
+                  <div class="form-group">
+                    <label for="file">Or upload supporting document (.txt, .pdf, .docx)</label>
+                    <div class="custom-file-upload">
+                      <input type="file" id="file" name="file" accept=".txt,.pdf,.docx">
+                      <div class="upload-area" id="upload-area">
+                        <span class="upload-icon">📁</span>
+                        <span class="upload-text" id="file-name">Click or drag file to upload</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Relation extraction mode</label>
+                    <div class="relation-mode-grid" aria-label="Relation extraction mode">
+                      <label class="relation-mode-option" data-tooltip="Fastest baseline. Good for simple SVO facts, but misses nuanced relations.">
+                        <input type="radio" name="relation_mode" value="regex">
+                        <span>Naive regex</span>
+                      </label>
+                      <label class="relation-mode-option" data-tooltip="Uses spaCy NER/dependency parsing. Balanced and offline, but less expressive than LLM.">
+                        <input type="radio" name="relation_mode" value="spacy">
+                        <span>NER</span>
+                      </label>
+                      <label class="relation-mode-option recommended" data-tooltip="Recommended: combines regex stability with LLM extraction/validation for best overall quality.">
+                        <input type="radio" name="relation_mode" value="hybrid" checked>
+                        <span>Hybrid</span>
+                        <small>Recommended</small>
+                      </label>
+                      <label class="relation-mode-option" data-tooltip="Most expressive, but slower and more dependent on model quality/resources.">
+                        <input type="radio" name="relation_mode" value="llm">
+                        <span>LLM only</span>
+                      </label>
+                    </div>
+                  </div>
+                  <button type="submit" class="btn btn-primary" id="verify-btn">
+                    <span class="btn-text">Verify Claim</span>
+                    <span class="spinner hidden"></span>
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <!-- Pipeline Summary / Active Subgraph -->
+            <div class="card glass">
+              <div class="card-header">
+                <h3>Claim-Specific Subgraph</h3>
+                <span class="badge badge-info">Active Query</span>
+              </div>
+              <div class="card-body claim-graph-body">
+                <div id="claim-kg-visualization" class="mini-graph">
+                  <div class="graph-placeholder">
+                    <p>Visual representation of relations queried/retrieved during verification will display here.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Verification Results Section -->
+          <div id="results" class="hidden">
+            <div class="card glass results-card">
+              <div class="card-body">
+                <div class="results-layout">
+                  <div class="results-main">
+                    <div class="verdict-wrapper">
+                      <div class="verdict-banner" id="verdict-banner">
+                        <div class="verdict-text">
+                          <span class="lbl">VERDICT:</span>
+                          <span class="val" id="verdict-value">NOT ENOUGH INFO</span>
+                        </div>
+                        <div class="verdict-confidence">
+                          <span class="lbl">CONFIDENCE:</span>
+                          <span class="val" id="confidence-value">0%</span>
+                        </div>
+                      </div>
+
+                      <div class="pipeline-meta" id="pipeline-meta" style="display: none;">
+                        <div class="meta-row">
+                          <span class="meta-label">Source:</span>
+                          <span class="meta-value" id="meta-source">-</span>
+                        </div>
+                        <div class="meta-row">
+                          <span class="meta-label">Wiki Pages Added:</span>
+                          <span class="meta-value" id="meta-wiki-pages">-</span>
+                        </div>
+                        <div class="meta-row">
+                          <span class="meta-label">KG Triples:</span>
+                          <span class="meta-value" id="meta-wiki-triples">-</span>
+                        </div>
+                        <div class="meta-row">
+                          <span class="meta-label">NLI Label:</span>
+                          <span class="meta-value" id="meta-nli-label">-</span>
+                        </div>
+                        <div class="meta-row">
+                          <span class="meta-label">Cache:</span>
+                          <span class="meta-value" id="meta-cache">miss</span>
+                        </div>
+                        <div class="meta-row">
+                          <span class="meta-label">Relations:</span>
+                          <span class="meta-value" id="meta-relation-mode">-</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="probability-distribution">
+                      <h4>Verdict Probability Distribution</h4>
+                      <div class="prob-bar-container">
+                        <div class="prob-bar" id="prob-bar"></div>
+                      </div>
+                      <div class="prob-legend">
+                        <span class="legend-item"><span class="legend-dot supported"></span> SUPPORTED</span>
+                        <span class="legend-item"><span class="legend-dot refuted"></span> REFUTED</span>
+                        <span class="legend-item"><span class="legend-dot nei"></span> NOT ENOUGH INFO</span>
+                      </div>
+                    </div>
+
+                    <div class="tabs-sub">
+                      <button class="tab-sub-btn active" data-subtab="premise">NLI Premise</button>
+                      <button class="tab-sub-btn" data-subtab="trace">Evidence Trace</button>
+                      <button class="tab-sub-btn" data-subtab="entities">Extracted Entities</button>
+                      <button class="tab-sub-btn" data-subtab="details">Stage Timing</button>
+                    </div>
+
+                    <div class="subtab-contents">
+                      <div class="subtab-pane active" id="subtab-premise">
+                        <div class="evidence-box" id="premise-box"></div>
+                      </div>
+                      <div class="subtab-pane hidden" id="subtab-trace">
+                        <div class="evidence-trace-list" id="evidence-trace-list"></div>
+                      </div>
+                      <div class="subtab-pane hidden" id="subtab-entities">
+                        <div class="entities-container" id="entities-list"></div>
+                        <div class="wiki-references" id="wiki-ref-container">
+                          <h5>Wiki Pages Fetched</h5>
+                          <ul id="wiki-ref-list"></ul>
+                        </div>
+                      </div>
+                      <div class="subtab-pane hidden" id="subtab-details">
+                        <div class="timing-bars-container" id="timing-bars"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: KG EXPLORER -->
+      <section id="view-kg-explorer" class="content-view">
+        <header class="view-header">
+          <h1>Knowledge Graph Explorer</h1>
+          <p>Inspect, search, and manage the local factual triple store built from compiled Wikipedia pages.</p>
+        </header>
+
+        <div class="view-body">
+          <div class="grid-layout cols-3">
+            <!-- Left panel: Controls -->
+            <div class="card glass col-span-1">
+              <div class="card-header">
+                <h3>KG Controls</h3>
+              </div>
+              <div class="card-body">
+                <div class="kg-actions">
+                  <button class="btn btn-secondary btn-full" id="btn-rebuild-kg">Rebuild KG from Wiki</button>
+                  <button class="btn btn-danger btn-full" id="btn-clear-kg">Wipe Knowledge Graph</button>
+                </div>
+                <div class="divider"></div>
+                <form id="add-triple-form">
+                  <h4>Add Custom Relation</h4>
+                  <div class="form-group-sm">
+                    <label for="new-subject">Subject</label>
+                    <input type="text" id="new-subject" name="subject" placeholder="e.g. Earth" required>
+                  </div>
+                  <div class="form-group-sm">
+                    <label for="new-predicate">Predicate</label>
+                    <input type="text" id="new-predicate" name="predicate" placeholder="e.g. orbits" required>
+                  </div>
+                  <div class="form-group-sm">
+                    <label for="new-object">Object</label>
+                    <input type="text" id="new-object" name="object" placeholder="e.g. Sun" required>
+                  </div>
+                  <button type="submit" class="btn btn-primary btn-sm btn-full">Add Triple</button>
+                </form>
+              </div>
+            </div>
+
+            <!-- Right panel: Graph visualization -->
+            <div class="card glass col-span-2">
+              <div class="card-header space-between">
+                <h3>Local Triple Store</h3>
+                <div class="search-kg-container">
+                  <input type="text" id="search-kg-input" placeholder="Search entity node...">
+                  <button class="btn btn-secondary btn-sm" id="btn-search-kg">Search</button>
+                  <button class="btn btn-secondary btn-sm" id="btn-reset-kg">Reset Zoom</button>
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-kg-full">Show all nodes</button>
+                </div>
+              </div>
+              <div class="card-body graph-container-body">
+                <div id="full-kg-visualization" class="full-graph"></div>
+                <div class="graph-stats-footer" id="full-kg-stats">0 nodes · 0 edges</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom block: Wiki document manager -->
+          <div class="card glass mt-1">
+            <div class="card-header">
+              <h3>Compiled Wiki Pages</h3>
+              <span class="card-subtitle">These markdown files are stored in data/wiki/</span>
+            </div>
+            <div class="card-body">
+              <div class="wiki-pages-layout">
+                <div class="wiki-pages-list-container">
+                  <div class="table-scroll">
+                    <table class="data-table" id="wiki-pages-table">
+                      <thead>
+                        <tr>
+                          <th>Page Title</th>
+                          <th>Filename</th>
+                          <th>Size</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <!-- Populated by JS -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="wiki-page-preview card-inner hidden" id="wiki-preview-panel">
+                  <div class="preview-header">
+                    <h4 id="preview-title">Page Title</h4>
+                    <button class="btn-close" id="btn-close-preview">×</button>
+                  </div>
+                  <div class="preview-body">
+                    <h5>Summary</h5>
+                    <p id="preview-summary"></p>
+                    <h5>Entities</h5>
+                    <div class="tag-cloud" id="preview-entities"></div>
+                    <h5>Relations</h5>
+                    <ul class="relation-list" id="preview-relations"></ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: WIKI EXPLORER -->
+      <section id="view-wiki-explorer" class="content-view">
+        <header class="view-header">
+          <h1>Wiki Explorer</h1>
+          <p>Navigate and read the compiled local markdown pages in data/wiki/.</p>
+        </header>
+
+        <div class="view-body">
+          <div class="wiki-reader-layout">
+            <div class="card glass wiki-reader-list">
+              <div class="card-header">
+                <h3>Pages</h3>
+              </div>
+              <div class="card-body">
+                <input type="text" id="wiki-reader-search" placeholder="Search pages...">
+                <div class="wiki-reader-pages" id="wiki-reader-pages"></div>
+              </div>
+            </div>
+
+            <div class="card glass wiki-reader-main">
+              <div class="card-header">
+                <h3 id="wiki-reader-title">Select a page</h3>
+                <span class="card-subtitle" id="wiki-reader-filename"></span>
+              </div>
+              <div class="card-body">
+                <div id="wiki-reader-summary" class="wiki-reader-summary">No wiki page selected.</div>
+                <div id="wiki-reader-graph" class="wiki-reader-graph"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: BENCHMARK CENTER -->
+      <section id="view-benchmark-center" class="content-view">
+        <header class="view-header">
+          <h1>Benchmark Center</h1>
+          <p>Run evaluation suites against the HoVer dataset splits, track real-time progress, and review test results.</p>
+        </header>
+
+        <div class="view-body">
+          <div class="grid-layout cols-3">
+            <!-- Left panel: Run benchmark -->
+            <div class="card glass col-span-1">
+              <div class="card-header">
+                <h3>Start New Run</h3>
+              </div>
+              <div class="card-body">
+                <form id="benchmark-run-form">
+                  <div class="form-group-sm">
+                    <label for="bench-samples">Samples count</label>
+                    <input type="number" id="bench-samples" name="samples" value="10" min="1" max="1000">
+                  </div>
+                  <div class="form-group-sm">
+                    <label for="bench-split">Dataset Split</label>
+                    <select id="bench-split" name="split">
+                      <option value="train">Train</option>
+                      <option value="validation">Validation</option>
+                      <option value="test">Test</option>
+                    </select>
+                  </div>
+                  <div class="form-group-sm">
+                    <label for="bench-seed">Random Seed</label>
+                    <input type="number" id="bench-seed" name="seed" value="42">
+                  </div>
+                  <button type="submit" class="btn btn-primary btn-full" id="btn-run-benchmark">Launch Benchmark</button>
+                </form>
+
+                <!-- Real-time benchmark progress -->
+                <div class="benchmark-progress-panel hidden" id="bench-progress-panel">
+                  <div class="progress-header">
+                    <span class="status-label" id="bench-status-label">Running...</span>
+                    <span class="progress-fraction" id="bench-progress-fraction">0/10</span>
+                  </div>
+                  <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" id="bench-progress-bar"></div>
+                  </div>
+                  <div class="current-sample-info" id="bench-current-sample">
+                    <!-- JS populated -->
+                  </div>
+                  <div class="benchmark-live-logs" id="bench-live-logs">
+                    <!-- Logs populated -->
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right panel: Past runs & metrics -->
+            <div class="card glass col-span-2">
+              <div class="card-header space-between">
+                <h3>Benchmark Runs</h3>
+                <div class="run-selector-group">
+                  <label for="bench-run-select">Select Run:</label>
+                  <select id="bench-run-select">
+                    <option value="">No completed runs found</option>
+                  </select>
+                </div>
+              </div>
+              <div class="card-body">
+                <div id="benchmark-metrics-display" class="hidden">
+                  <!-- Metrics cards -->
+                  <div class="metrics-grid">
+                    <div class="metric-card">
+                      <span class="lbl">ACCURACY</span>
+                      <span class="val" id="metrics-accuracy">0.0%</span>
+                    </div>
+                    <div class="metric-card">
+                      <span class="lbl">PRECISION</span>
+                      <span class="val" id="metrics-precision">0.0%</span>
+                    </div>
+                    <div class="metric-card">
+                      <span class="lbl">RECALL</span>
+                      <span class="val" id="metrics-recall">0.0%</span>
+                    </div>
+                    <div class="metric-card">
+                      <span class="lbl">F1 SCORE</span>
+                      <span class="val" id="metrics-f1">0.00</span>
+                    </div>
+                  </div>
+
+                  <!-- Confusion matrix & summary -->
+                  <div class="grid-layout cols-2 mt-1">
+                    <div class="confusion-matrix-box">
+                      <h4>Confusion Matrix</h4>
+                      <table class="matrix-table">
+                        <tr>
+                          <th></th>
+                          <th>Pred SUPPORTED</th>
+                          <th>Pred REFUTED</th>
+                        </tr>
+                        <tr>
+                          <th>Gold SUPPORTED</th>
+                          <td id="cell-tp">0 (TP)</td>
+                          <td id="cell-fn">0 (FN)</td>
+                        </tr>
+                        <tr>
+                          <th>Gold REFUTED</th>
+                          <td id="cell-fp">0 (FP)</td>
+                          <td id="cell-tn">0 (TN)</td>
+                        </tr>
+                      </table>
+                    </div>
+                    <div class="bench-summary-box">
+                      <h4>Run Summary</h4>
+                      <ul class="summary-details">
+                        <li><strong>Timestamp:</strong> <span id="bench-run-time">N/A</span></li>
+                        <li><strong>Total Samples:</strong> <span id="bench-run-total">0</span></li>
+                        <li><strong>Mismatched Predictions (Errors):</strong> <span id="bench-run-errors">0</span></li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <!-- Error logs list -->
+                  <div class="mt-1">
+                    <h4>Mismatched Claims (Errors)</h4>
+                    <div class="error-log-scroll">
+                      <div class="error-log-list" id="bench-error-list">
+                        <!-- Populated by JS -->
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="empty-state" id="benchmark-empty-state">
+                  <p>Select a benchmark run from the dropdown to review metrics and error analysis.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: NER PLAYGROUND -->
+      <section id="view-ner-playground" class="content-view">
+        <header class="view-header">
+          <h1>Entity Extraction Playground</h1>
+          <p>Analyze how text is tokenized, named entities are extracted, and SBERT chunk matching verifies candidate entities.</p>
+        </header>
+
+        <div class="view-body">
+          <div class="grid-layout cols-3">
+            <!-- Input text area -->
+            <div class="card glass col-span-1">
+              <div class="card-header">
+                <h3>Test Phrase</h3>
+              </div>
+              <div class="card-body">
+                <form id="ner-form">
+                  <div class="form-group">
+                    <label for="ner-text">Input text</label>
+                    <textarea id="ner-text" name="text" rows="8" placeholder="Type a sentence here..."></textarea>
+                  </div>
+                  <button type="submit" class="btn btn-primary btn-full" id="btn-process-ner">
+                    <span class="btn-text">Extract Entities</span>
+                    <span class="spinner hidden"></span>
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <!-- Analysis output panels -->
+            <div class="card glass col-span-2">
+              <div class="card-header">
+                <h3>Extraction Analysis</h3>
+              </div>
+              <div class="card-body">
+                <div id="ner-results-display" class="hidden">
+                  <h4>spaCy Named Entities</h4>
+                  <div class="ner-highlight-box" id="ner-highlights">
+                    <!-- Highlighted text -->
+                  </div>
+
+                  <h4 class="mt-1">SBERT Noun Chunks Prototype Matcher</h4>
+                  <div class="table-scroll">
+                    <table class="data-table" id="ner-chunks-table">
+                      <thead>
+                        <tr>
+                          <th>Noun Chunk</th>
+                          <th class="has-tooltip" data-tooltip="Highest SBERT cosine similarities between this noun chunk and entity-type prototypes. Higher means semantically closer.">Top Scores</th>
+                          <th class="has-tooltip" data-tooltip="The dynamic minimum score required for this chunk. Proper nouns get a lower threshold.">Threshold</th>
+                          <th>Best Category</th>
+                          <th class="has-tooltip" data-tooltip="YES means the best score reached the threshold and the chunk is treated as an entity candidate.">Candidate</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <!-- JS populated -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="empty-state" id="ner-empty-state">
+                  <p>Enter text on the left and trigger entity extraction to run spacy NER and SBERT analysis.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: SYSTEM INFO -->
+      <section id="view-system-info" class="content-view">
+        <header class="view-header">
+          <h1>System & Model Status</h1>
+          <p>Inspect local files, check loaded PyTorch weights, and monitor pipeline server parameters.</p>
+        </header>
+
+        <div class="view-body">
+          <div class="grid-layout cols-2">
+            <!-- Models card -->
+            <div class="card glass">
+              <div class="card-header">
+                <h3>Neural Pipeline Models</h3>
+              </div>
+              <div class="card-body">
+                <div class="model-status-list" id="model-status-list">
+                  <div class="model-status-item">
+                    <div class="model-info">
+                      <h4>spaCy NER Pipeline</h4>
+                      <code class="text-muted">en_core_web_sm</code>
+                    </div>
+                    <span class="badge badge-success" id="status-spacy">Checking...</span>
+                  </div>
+                  <div class="model-status-item">
+                    <div class="model-info">
+                      <h4>SBERT Embedding Model</h4>
+                      <code class="text-muted">all-MiniLM-L6-v2</code>
+                    </div>
+                    <span class="badge badge-success" id="status-sbert">Checking...</span>
+                  </div>
+                  <div class="model-status-item">
+                    <div class="model-info">
+                      <h4>DeBERTa NLI Model</h4>
+                      <code class="text-muted">tasksource/deberta-base-long-nli</code>
+                    </div>
+                    <span class="badge badge-success" id="status-deberta">Checking...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Path status card -->
+            <div class="card glass">
+              <div class="card-header">
+                <h3>Workspace Parameters</h3>
+              </div>
+              <div class="card-body">
+                <table class="info-table">
+                  <tr>
+                    <th>Knowledge Graph Path:</th>
+                    <td id="info-kg-path">data/knowledge_graph.json</td>
+                  </tr>
+                  <tr>
+                    <th>Wiki Storage Directory:</th>
+                    <td>data/wiki/</td>
+                  </tr>
+                  <tr>
+                    <th>Raw Ingestion Directory:</th>
+                    <td>data/raw/</td>
+                  </tr>
+                  <tr>
+                    <th>Evaluation Data Directory:</th>
+                    <td>data/eval/</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Vis.js library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/standalone/umd/vis-network.min.js"></script>
+  <script src="/static/script.js"></script>
+</body>
+</html>

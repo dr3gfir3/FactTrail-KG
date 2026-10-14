@@ -1,0 +1,93 @@
+# TagaP Fact-Checking Pipeline Configuration
+
+models:
+  # Sentence transformer for bi-encoder embedding (entity prototypes, evidence ranking)
+  sbert: "all-MiniLM-L6-v2"
+  # Cross-encoder for re-ranking (same MiniLM family, 22M params)
+  cross_encoder: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  # NLI model for verdict prediction (RoBERTa for enhanced multi-hop)
+  nli: "roberta-large-mnli"
+  # spaCy NER model
+  spacy: "en_core_web_sm"
+  # Instruction model for LLM-based wiki extraction (served via Ollama)
+  llm: "Qwen/Qwen3-1.7B"
+  # Ollama model used for wiki extraction (must be pulled in Ollama)
+  ollama_llm: "ministral-3:3b"
+  # Ollama HTTP endpoint
+  ollama_base_url: "http://localhost:11434"
+thresholds:
+  # Entity prototype cosine similarity threshold (noun chunks)
+  entity_prototype: 0.45
+  # Cross-encoder score threshold for evidence inclusion (min-max normalized 0-1)
+  cross_encoder_min_score: 0.0
+  # NLI confidence threshold for SUPPORTED/REFUTED
+  nli_confidence: 0.5
+  # Min confidence to stop the iterative retrieval loop early
+  iterative_confidence: 0.5
+  # Semantic similarity threshold for implicit entity detection
+  implicit_entity: 0.6
+  # Predicate informativeness weights
+  predicate_weights:
+    developed: 2.0
+    discovered: 2.0
+    published: 1.8
+    formulated: 1.8
+    created: 1.5
+    invented: 1.5
+    founded: 1.5
+    established: 1.3
+    born_in: 0.5
+    located_in: 0.5
+    part_of: 0.7
+    member_of: 0.7
+
+retrieval:
+  # Entity cleanup before KG/Wikipedia retrieval
+  max_primary_entities: 5
+  allow_date_entities: false
+  min_entity_chars: 3
+  # KG search: max triples per entity (exact + semantic combined)
+  kg_max_per_entity: 50
+  # Bi-encoder top-k for cross-encoder re-ranking
+  biencoder_top_k: 30
+  # Final evidence count for NLI (higher for LLM + enhanced premise)
+  final_top_k: 15
+  # Wikipedia API results to fetch snippets for
+  wiki_snippet_candidates: 3
+  # Wikipedia full pages to fetch after snippet re-rank
+  wiki_full_fetch: 3
+  # Max iterative retrieval passes
+  max_iterations: 2
+
+pipeline:
+  # Request delay for Wikipedia API (seconds)
+  wiki_request_delay: 0.3
+  # Max retries for Wikipedia API
+  wiki_max_retries: 5
+  # KG rebuild on startup if missing
+  auto_rebuild_kg: true
+  # Enable iterative retrieval loop
+  iterative_retrieval: true
+  # Enable cross-encoder re-ranking
+  use_cross_encoder: true
+  # Enable structured NLI (per-evidence)
+  structured_nli: true
+  # Primary judge: NLI owns verdict probabilities and confidence
+  primary_judge: "nli"
+  # Enable advisory LLM explanation/disagreement diagnostics
+  use_llm_judge: true
+  # Enable hybrid KG search (exact + semantic)
+  use_hybrid_kg_search: true
+  # Enable local GraphRAG retrieval (Qdrant local vectors + BM25 + KG adjacency)
+  use_local_graph_rag: true
+  # Wiki extraction method: "regex", "spacy", "llm", "hybrid"
+  wiki_extraction_method: "hybrid"
+  # LLM extraction max tokens
+  llm_max_new_tokens: 512
+  # LLM temperature (0 = deterministic)
+  llm_temperature: 0.0
+
+logging:
+  level: "INFO"
+  format: "json"
+  output: "stdout"

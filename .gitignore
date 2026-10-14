@@ -1,0 +1,90 @@
+# Virtual Environment
+/data/
+/gui/uploads/
+/.pytest-tmp/
+venv/
+env/
+ENV/
+data/raw
+data/wiki
+
+# Python
+__pycache__/
+
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Environment variables
+.env
+.env.local
+.venv
+.worktrees/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+.obsidian/
+.opencode/
+.obsidian\graph.json
+.obsidian\workspace.json
+graphify-out/
+node_modules/
+package-lock.json
+package.json
+data/kg/triple_embeddings.npy
+data/knowledge_graph.json
+.codex/
+/report
+/report_v2
+opencode.json
+data/kg/triple_embeddings_index.json
+data/qdrant/wiki_kg_triples.json
+test_llm_quick.py
+test_llm.py
+/data/.recompile_state.json
